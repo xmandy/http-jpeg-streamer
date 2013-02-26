@@ -30,14 +30,22 @@ void init_iobuffer(iobuffer *iobuf)
 void send_error(int fd, int code, char *message)
 {
 	char buffer[SEND_BUFFER_SIZE] = {0};
+	char error_reason[256];
+	int length;
+	memset(error_reason, '\0', sizeof(error_reason));
 	switch(code) {
 	case 400:
-			sprintf(buffer, "http/1.1 400 bad request\r\n" \
-					"content-type:text/plain\r\n" \
+			sprintf(error_reason, "400: Not Found!\r\n"\
+					"%s\r\n", message);
+			length = strlen(error_reason);
+			
+			sprintf(buffer, "Http/1.0 400 Bad Request\r\n" \
+					"Content-type: text/plain\r\n" \
+					"Contentp-Length:"
 					STD_HEADER \
 					"\r\n" \
-					"400: not found!\r\n" \
-					"%s", message);
+					"400: Not Found!\r\n" \
+					"%s\r\n", message);
 			break;
 	default:
 			break;
@@ -208,11 +216,65 @@ void *client_thread(void *arg)
 
 	if(strstr(buffer, "get /?action=stream") != NULL) {
 		// stream the mjpeg video.
+		req.type = A_STREAM;
 	}
 	else {
 		// first send error.
-		send_error(sockfd, 400, "malformed http request");
+		memset(buffer, 0, sizeof(buffer));
+		sprintf(buffer,"HTTP/1.0 404 NOT FOUND\r\n"\
+				"Content-Type: text/html\r\n"\
+				"Content-Length: 328\r\n"\
+				"Date: Tue, 26 Feb 2013 07:00:00 CMT\r\n"\
+				"Server: lighthttpd/1.4.28\r\n"\
+				"X-Cache: MISS from wiki.bdwm.net\r\n"\
+				"via: 1.0 wiki.bdwm.net (squid/3.1.12)\r\n"\
+				"Connection: keep-alive\r\n"\
+				"\r\n"\
+				"<?xml version=\"1.0\" encoding=\"iso-8859-1\"?>\n"\
+				"<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"\n"\
+         			"\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n"\
+				"<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\">\n"\
+				"<head>\n"\
+   				"<title>404 - Not Found</title>\n"\
+    			"</head>\n"\
+ 				"<body>\n"\
+  				"<h1>404 - Not Found</h1>\n"\
+   				"</body>\n"\
+				"</html>\n");
+		char test[] ="<?xml version=\"1.0\" encoding=\"iso-8859-1\"?>\n"\
+				"<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"\n"\
+         			"\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n"\
+				"<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\">\n"\
+				"<head>\n"\
+   				"<title>404 - Not Found</title>\n"\
+    			"</head>\n"\
+ 				"<body>\n"\
+  				"<h1>404 - Not Found</h1>\n"\
+   				"</body>\n"\
+				"</html>\n";
+		
+		fprintf(stderr, "%s\n", buffer);
+		fprintf(stderr, "%d\n", strlen(test));
+		fprintf(stderr, "%d\n", sizeof(buffer));
+
+		if(write(sockfd, buffer, strlen(buffer)) == -1) {
+			perror("send:");
+			close(sockfd);
+			return NULL;
+		}
+	//	send_error(sockfd, 400, "malformed http request");
 	}
+
+	/*
+	 * parse the rest of the HTTP-requst
+	 * the end of the request-header is marked by a single, empty line with "\r\n"
+	 */
+	//do {
+	//	memset(buffer, 0, sizeof(buffer));
+
+	//	if((cnt = _readline(sockfd, &iobuf, buffer
+
+
 
 	/* determine what to deliver */
 /*	if(strstr(buffer, "get /?action=snapshot") != NULL) {
