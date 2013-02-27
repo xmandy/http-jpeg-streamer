@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <netdb.h> // NI_MAXHOST, addrinfo defination.
 #include <pthread.h>
+#include <fcntl.h>
 #include "server.h"
 
 
@@ -21,10 +22,99 @@ void init_request(request *req)
 	req->credentials = NULL;
 }
 
+void free_request(request *req)
+{
+	free(req->parameter);
+	free(req->client);
+	free(req->credentials);
+}
+
 void init_iobuffer(iobuffer *iobuf)
 {
 	memset(iobuf->buffer, 0, sizeof(iobuf->buffer));
 	iobuf->level = 0;
+}
+
+
+void send_stream(int fd)
+{
+	unsigned char *frame = NULL;
+		
+}
+
+void send_snapshot(int fd)
+{
+	unsigned char *frame = NULL;
+	int frame_size = 0;
+	char buffer[SEND_BUFFER_SIZE]={0};
+	
+	FILE *input;	
+	const char *name = "/workspace/netcomponent/jpg/shot-001.jpg";
+
+	int bytes_written, bytes_left;
+	char *written_ptr;
+
+
+	if((input = fopen(name, "rb")) == NULL) {
+			DBG("open file failed!\n");
+			return;
+	}
+	
+	fseek(input, 0, SEEK_END);
+	frame_size = ftell(input);
+//	DBG("jpgsize:%d\n", frame_size);
+
+	frame = (unsigned char*) malloc(sizeof(unsigned char)*frame_size);
+	
+//	DBG("framesize:%d\n", sizeof(frame));
+
+
+	if(!frame) {
+		DBG("malloc for frame buffer failed!\n");
+		return;
+	}
+
+	fseek(input, 0, SEEK_SET);
+	
+	if(fread(frame, 1, frame_size, input) != frame_size) {
+			DBG("read file failed!\n");
+			free(frame);
+			fclose(input);
+			return;
+	}
+
+	sprintf(buffer, "HTTP/1.0 200 OK\r\n"\
+			"Content-Type: image/jpeg\r\n"\
+			"Content-Length: %d\r\n"\
+			STD_HEADER \
+			"\r\n", frame_size);
+//	DBG("Header:%s\n", buffer);
+	if(write(fd, buffer, strlen(buffer)) < 0) {
+			free(frame);
+			fclose(input);
+			DBG("write failed!\n");
+			return;
+	}
+	else {
+		written_ptr = frame;
+		bytes_left = frame_size;
+		bytes_written = 0;	
+		while(bytes_left > 0) {
+			bytes_written = write(fd, written_ptr, bytes_left);
+			DBG("written:%d\n", bytes_written);
+			if(bytes_written < 0) {
+				DBG("write jpeg data failed!\n");
+				free(frame);
+				fclose(input);
+				return;
+			}
+			bytes_left -= bytes_written;
+			written_ptr += bytes_written;
+		}
+	}
+
+	fclose(input);
+	free(frame);
 }
 
 void send_error(int fd, int code, char *message)
@@ -39,17 +129,18 @@ void send_error(int fd, int code, char *message)
 					"%s\r\n", message);
 			length = strlen(error_reason);
 			
-			sprintf(buffer, "Http/1.0 400 Bad Request\r\n" \
+			sprintf(buffer, "HTTP/1.0 400 Bad Request\r\n" \
 					"Content-type: text/plain\r\n" \
-					"Contentp-Length:"
+					"Content-Length: %d\r\n"\
 					STD_HEADER \
 					"\r\n" \
-					"400: Not Found!\r\n" \
-					"%s\r\n", message);
+					"%s", length, error_reason);
 			break;
 	default:
 			break;
 	}
+
+	fprintf(stderr, "%s", buffer);
 
 	if(write(fd, buffer, strlen(buffer)) < 0) {
 		   fprintf(stderr, "write failed!\n");
@@ -209,6 +300,7 @@ void *client_thread(void *arg)
 	init_request(&req);
 
 	memset(buffer, 0, sizeof(buffer));
+
     if((cnt = _readline(sockfd, &iobuf, buffer, sizeof(buffer) - 1, 5)) == -1) {
 		close(sockfd);
 		return NULL;
@@ -219,154 +311,51 @@ void *client_thread(void *arg)
 		req.type = A_STREAM;
 	}
 	else {
-		// first send error.
-		memset(buffer, 0, sizeof(buffer));
-		sprintf(buffer,"HTTP/1.0 404 NOT FOUND\r\n"\
-				"Content-Type: text/html\r\n"\
-				"Content-Length: 328\r\n"\
-				"Date: Tue, 26 Feb 2013 07:00:00 CMT\r\n"\
-				"Server: lighthttpd/1.4.28\r\n"\
-				"X-Cache: MISS from wiki.bdwm.net\r\n"\
-				"via: 1.0 wiki.bdwm.net (squid/3.1.12)\r\n"\
-				"Connection: keep-alive\r\n"\
-				"\r\n"\
-				"<?xml version=\"1.0\" encoding=\"iso-8859-1\"?>\n"\
-				"<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"\n"\
-         			"\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n"\
-				"<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\">\n"\
-				"<head>\n"\
-   				"<title>404 - Not Found</title>\n"\
-    			"</head>\n"\
- 				"<body>\n"\
-  				"<h1>404 - Not Found</h1>\n"\
-   				"</body>\n"\
-				"</html>\n");
-		char test[] ="<?xml version=\"1.0\" encoding=\"iso-8859-1\"?>\n"\
-				"<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"\n"\
-         			"\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n"\
-				"<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\">\n"\
-				"<head>\n"\
-   				"<title>404 - Not Found</title>\n"\
-    			"</head>\n"\
- 				"<body>\n"\
-  				"<h1>404 - Not Found</h1>\n"\
-   				"</body>\n"\
-				"</html>\n";
-		
-		fprintf(stderr, "%s\n", buffer);
-		fprintf(stderr, "%d\n", strlen(test));
-		fprintf(stderr, "%d\n", sizeof(buffer));
-
-		if(write(sockfd, buffer, strlen(buffer)) == -1) {
-			perror("send:");
-			close(sockfd);
-			return NULL;
-		}
 	//	send_error(sockfd, 400, "malformed http request");
+		send_snapshot(sockfd);
+		close(sockfd);
+		return NULL;
 	}
 
 	/*
 	 * parse the rest of the HTTP-requst
 	 * the end of the request-header is marked by a single, empty line with "\r\n"
 	 */
-	//do {
-	//	memset(buffer, 0, sizeof(buffer));
+	do {
+		memset(buffer, 0, sizeof(buffer));
 
-	//	if((cnt = _readline(sockfd, &iobuf, buffer
-
-
-
-	/* determine what to deliver */
-/*	if(strstr(buffer, "get /?action=snapshot") != NULL) {
-			req.type = a_snapshot;
-	} else if((strstr(buffer, "get /cam") != NULL) && (strstr(buffer, ".jpg") != NULL)) {
-			req.type = a_snapshot;
-			input_suffixed = 255;
-	} else if(strstr(buffer, "get /?action=stream") != NULL) {
-			input_suffixed = 255;
-			req.type = a_stream;
-	} else if((strstr(buffer, "get /cam") != NULL) && (strstr(buffer, ".mjpg") != NULL)) {
-			req.type = a_stream;
-			input_suffixed = 255;
-	} else if((strstr(buffer, "get /input") != NULL) && (strstr(buffer, ".json") != NULL)) {
-			req.type = a_input_json;
-			input_suffixed = 255;
-	} else if((strstr(buffer, "get /output") != NULL) && (strstr(buffer, ".json") != NULL)) {
-			req.type = a_output_json;
-			input_suffixed = 255;
-	} else if(strstr(buffer, "get /program.json") != NULL) {
-			req.type = a_program_json;
-			input_suffixed = 255;
-	} else if(strstr(buffer, "get /?action=command") != NULL) {
-			int len;
-			req.type = a_command;
-
-			// advance by the length of known string 
-			if((pb = strstr(buffer, "get /?action=command")) == NULL) {
-				//	send_error(lcfd.fd, 400, "malformed http request");
-				//	close(lcfd.fd);
-					return NULL;
-			}
-			pb += strlen("get /?action=command"); // a pb points to thestring after the first & after command
-
-			// only accept certain characters 
-			len = min(max(strspn(pb, "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz_-=&1234567890%./"), 0), 100);
-
-			req.parameter = malloc(len + 1);
-			if(req.parameter == NULL) {
-					exit(exit_failure);
-			}
-			memset(req.parameter, 0, len + 1);
-			strncpy(req.parameter, pb, len);
-
-			if(unescape(req.parameter) == -1) {
-					free(req.parameter);
-				//	send_error(lcfd.fd, 500, "could not properly unescape command parameter string");
-				//	LOG("could not properly unescape command parameter string\n");
-				//	close(lcfd.fd);
-					return NULL;
-			}
-
-	} else {
-			int len;
-
-			req.type = A_FILE;
-
-			if((pb = strstr(buffer, "GET /")) == NULL) {
-				//	send_error(lcfd.fd, 400, "Malformed HTTP request");
-				//	close(lcfd.fd);
-					return NULL;
-			}
-
-			pb += strlen("GET /");
-			len = MIN(MAX(strspn(pb, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ._-1234567890"), 0), 100);
-			req.parameter = malloc(len + 1);
-			if(req.parameter == NULL) {
-					exit(EXIT_FAILURE);
-			}
-			memset(req.parameter, 0, len + 1);
-			strncpy(req.parameter, pb, len);
-
-	}*/
-/*	numbytes = _read(sockfd, &iobuf, buf, 100, 5);
-	fprintf(stderr, "%s", buf);
+		if((cnt = _readline(sockfd, &iobuf, buffer, sizeof(buffer) - 1, 5)) == -1) {
+				free_request(&req);
+				close(sockfd);
+				return NULL;
+		}
 		
+		if(strstr(buffer, "User-Agent: ") != NULL) {
+				req.client = strdup(buffer + strlen("User-Agent: "));
+		}
+		else if(strstr(buffer, "Authorization: Basic ") != NULL) {
+				req.credentials = strdup(buffer + strlen("Authorization: Basic "));
+				//decodeBase64(req.credentials);
+				fprintf(stderr, "user:pass:%s\n", req.credentials);
+		}
+	} while(cnt > 2 && !(buffer[0] == '\r' && buffer[1] == '\n'));
 
-	if((numbytes = recv(sockfd, buf, 1024, 0)) == -1) {
-		perror("recv");
+	// in future add the authorize steps.
+	
+
+	// determine what to send.
+	switch(req.type) {
+	case A_STREAM:
+			{
+	//			send_stream(sockfd);
+			}
+		break;
+	default:
+		fprintf(stderr, "unknown request!\n");
 	}
-	else {
-		buf[numbytes] = '\0';
-		fprintf(stderr, "%s", buf);
-	}	
-
-
-	if(send(sockfd, "Hello world!\n", 14, 0) == -1) {
-			perror("send:");
-			close(sockfd);
-			return NULL;
-	}*/
+		
 	close(sockfd);
+	free_request(&req);
 	return NULL;
 }
 
@@ -411,6 +400,7 @@ int main(int argc, char **argv)
 			perror("getaddrinfo:");
 			return 0;
 	}
+
 
 	for(i = 0; i < MAX_SD_LEN; i++)
 			server[i] = -1;
