@@ -10,6 +10,7 @@
 #include <netdb.h> // NI_MAXHOST, addrinfo defination.
 #include <pthread.h>
 #include <fcntl.h>
+#include <time.h>
 #include "server.h"
 
 
@@ -35,11 +36,114 @@ void init_iobuffer(iobuffer *iobuf)
 	iobuf->level = 0;
 }
 
+int _write(int fd, void *buffer, int len)
+{
+	unsigned char *ptr;
+	int bytes_written, bytes_left, bytes_returned;
+
+	bytes_left = len;
+	bytes_written = 0;
+	ptr = buffer;
+
+	while(bytes_left > 0) {
+			bytes_written = write(fd, ptr, bytes_left);
+		//	bytes_written = send(fd, ptr, bytes_left, 0);
+			if(bytes_written < 0) {
+				DBG("write socket failed!\n");
+				return -1;
+			}
+			bytes_left -= bytes_written;
+			ptr += bytes_written;
+	}
+	return 0;
+}	
+
 
 void send_stream(int fd)
 {
 	unsigned char *frame = NULL;
+	int frame_size = 0;
+	char buffer[SEND_BUFFER_SIZE] = {0};
+
+	FILE *input = NULL;
+	char name[100];
+	int i = 1;
+
+	// preparing header.
+	sprintf(buffer, "HTTP/1.0 200 OK\r\n" \
+			"Content-Type: multipart/x-mixed-replace;boundary=" BOUNDARY "\r\n" \
+			"\r\n" \
+			"--" BOUNDARY "\r\n");
+	if(_write(fd, buffer, strlen(buffer)) < 0) {
+			DBG("write header failed!\n");
+			return;
+	}
+			
+	DBG("seconds:%d\n", time((time_t *)NULL));
+
+	while(1) {
+		sprintf(name, "jpg/shot-%03d.jpg", i);
 		
+		if((input = fopen(name, "rb")) == NULL) {
+			DBG("open file %s failed\n", name);
+			return;
+		}
+		fseek(input, 0, SEEK_END);
+		frame_size = ftell(input);
+		frame = (unsigned char *) malloc(frame_size);
+		if(!frame) {
+			DBG("malloc frame buffer failed!\n");
+			fclose(input);
+			return;
+		}
+		fseek(input, 0, SEEK_SET);
+		if(fread(frame, 1, frame_size, input) != frame_size) {
+			DBG("read file failed!\n");
+			free(frame);
+			fclose(input);
+			return;
+		}
+
+		memset(buffer, '\0', sizeof(buffer));
+
+		// prepare individual mimetype and the length
+		sprintf(buffer, "Content-Type: image/jpeg\r\n" \
+				"Content-Length: %d\r\n" \
+				"\r\n", frame_size);
+
+		if(_write(fd, buffer, strlen(buffer)) < 0) {
+			DBG("write file %s\n  header failed!\n", name);
+			free(frame);
+			fclose(input);
+			return;
+		}
+			
+		// send frame.
+		if(_write(fd, frame, frame_size) < 0) {
+			DBG("write %s frame failed!\n", name);
+			free(frame);
+			fclose(input);
+			return;
+		}
+		
+		// send boundary.
+		memset(buffer, '\0', sizeof(buffer));
+		sprintf(buffer, "\r\n--" BOUNDARY "\r\n");
+		if(_write(fd, buffer, strlen(buffer)) < 0) {
+			DBG("write file %s boundary failed!\n");
+			free(frame);
+			fclose(input);
+			return;
+		}
+
+		free(frame);
+		fclose(input);
+		i++;
+		if(i == 540)
+			i = 1;
+		if(i % 30 == 0)
+			DBG("seconds:%d\n", time((time_t *)NULL));
+	}
 }
 
 void send_snapshot(int fd)
@@ -49,9 +153,9 @@ void send_snapshot(int fd)
 	char buffer[SEND_BUFFER_SIZE]={0};
 	
 	FILE *input;	
-	const char *name = "/workspace/netcomponent/jpg/shot-001.jpg";
+	const char *name = "jpg/shot-001.jpg";
 
-	int bytes_written, bytes_left;
+	int bytes_written, bytes_left, bytes_returned;
 	char *written_ptr;
 
 
@@ -64,24 +168,24 @@ void send_snapshot(int fd)
 	frame_size = ftell(input);
 //	DBG("jpgsize:%d\n", frame_size);
 
-	frame = (unsigned char*) malloc(sizeof(unsigned char)*frame_size);
+//	frame = (unsigned char*) malloc(sizeof(unsigned char)*frame_size);
 	
 //	DBG("framesize:%d\n", sizeof(frame));
 
 
-	if(!frame) {
-		DBG("malloc for frame buffer failed!\n");
-		return;
-	}
+//	if(!frame) {
+//		DBG("malloc for frame buffer failed!\n");
+//		return;
+//	}
 
 	fseek(input, 0, SEEK_SET);
 	
-	if(fread(frame, 1, frame_size, input) != frame_size) {
+/*	if(fread(frame, 1, frame_size, input) != frame_size) {
 			DBG("read file failed!\n");
 			free(frame);
 			fclose(input);
 			return;
-	}
+	}*/
 
 	sprintf(buffer, "HTTP/1.0 200 OK\r\n"\
 			"Content-Type: image/jpeg\r\n"\
@@ -89,28 +193,32 @@ void send_snapshot(int fd)
 			STD_HEADER \
 			"\r\n", frame_size);
 //	DBG("Header:%s\n", buffer);
-	if(write(fd, buffer, strlen(buffer)) < 0) {
+	if(_write(fd, buffer, strlen(buffer)) < 0) {
 			free(frame);
 			fclose(input);
 			DBG("write failed!\n");
 			return;
 	}
 	else {
-		written_ptr = frame;
-		bytes_left = frame_size;
-		bytes_written = 0;	
-		while(bytes_left > 0) {
-			bytes_written = write(fd, written_ptr, bytes_left);
-			DBG("written:%d\n", bytes_written);
-			if(bytes_written < 0) {
-				DBG("write jpeg data failed!\n");
-				free(frame);
+		bytes_left = 0;
+		while(feof(input) == 0) {
+			memset(buffer, '\0', sizeof(buffer));
+			bytes_written = fread(buffer, 1, SEND_BUFFER_SIZE, input);
+			if(bytes_written != SEND_BUFFER_SIZE && feof(input) == 0) {
+				DBG("read file failed!\n");
 				fclose(input);
 				return;
 			}
-			bytes_left -= bytes_written;
-			written_ptr += bytes_written;
+			//DBG("send:%d\n", bytes_written);
+			bytes_left += bytes_written;
+			if(_write(fd, buffer, bytes_written) < 0) {
+				fclose(input);
+				DBG("write failed!\n");
+				return;
+			}
+//			DBG("returned:%d\n", bytes_returned);
 		}
+//		DBG("whole:%d\n", bytes_left);
 	}
 
 	fclose(input);
@@ -140,7 +248,7 @@ void send_error(int fd, int code, char *message)
 			break;
 	}
 
-	fprintf(stderr, "%s", buffer);
+//	fprintf(stderr, "%s", buffer);
 
 	if(write(fd, buffer, strlen(buffer)) < 0) {
 		   fprintf(stderr, "write failed!\n");
@@ -306,15 +414,20 @@ void *client_thread(void *arg)
 		return NULL;
 	}
 
-	if(strstr(buffer, "get /?action=stream") != NULL) {
-		// stream the mjpeg video.
+
+
+	if(strstr(buffer, "GET /snapshot") != NULL) {
+		// send a snapshot. 
+		req.type = A_SNAPSHOT;
+	}
+	else if(strstr(buffer, "GET /stream") != NULL) {
+		// send stream
 		req.type = A_STREAM;
 	}
 	else {
-	//	send_error(sockfd, 400, "malformed http request");
-		send_snapshot(sockfd);
-		close(sockfd);
-		return NULL;
+//		send_error(sockfd, 400, "malformed http request");
+//		close(sockfd);
+//		return NULL;
 	}
 
 	/*
@@ -346,16 +459,21 @@ void *client_thread(void *arg)
 	// determine what to send.
 	switch(req.type) {
 	case A_STREAM:
-			{
-	//			send_stream(sockfd);
-			}
+		{
+			send_stream(sockfd);
+		}
+		break;
+	case A_SNAPSHOT:
+		{
+			send_snapshot(sockfd);
+		}
 		break;
 	default:
-		fprintf(stderr, "unknown request!\n");
+		DBG("unknown request!\n");
 	}
 		
-	close(sockfd);
 	free_request(&req);
+	close(sockfd);
 	return NULL;
 }
 

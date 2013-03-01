@@ -10,11 +10,13 @@
 #define MIN(a, b) (((a) > (b)) ? (b) : (a))
 #define MAX(a, b) (((a) < (b)) ? (b) : (a))
 
-#define STD_HEADER "Connection: keep-alive\r\n"\
+#define STD_HEADER "Connection: close\r\n"\
 		"Server: MJPEG-Streamer/demo\r\n"\
 		"Cache-control: no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0\r\n"\
 		"Pragma:no-cache\r\n"\
 		"Expires: Tue, 26 Feb 2013 18:00:00 GMT\r\n"
+
+#define BOUNDARY "boundarydonotcross"
 
 #ifdef DEBUG
 #define DBG(...) fprintf(stderr, "DBG(%s, %s(), %d): ", __FILE__, __FUNCTION__, __LINE__), fprintf(stderr, __VA_ARGS__)
