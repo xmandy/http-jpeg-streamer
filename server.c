@@ -1,6 +1,9 @@
 #include "server.h"
 
-int writeready = 0;
+int writing = 0;
+static timeval start;
+static timeval complete;
+static int count = 0;
 
 void init_global() 
 {
@@ -14,7 +17,6 @@ void init_global()
 		}
 		memset(frame_buffer[i].data, 0, FRAME_BUFFER_SIZE);
 	}
-	bufev = NULL;
 }
 
 void exit_global()
@@ -24,8 +26,6 @@ void exit_global()
 		frame_buffer[i].length = 0;
 		free(frame_buffer[i].data);
 	}
-	if(bufev)
-		bufferevent_free(bufev);
 }
 
 void pthreadid(const char *threadname)
@@ -91,6 +91,42 @@ void err_quit(const char *fmt, ...)
  * These functions are used to server operations.
  *
  * ****************************************************************/
+static void copytobuffer(struct bufferevent *bev, char *buf, frame one)
+{
+	struct evbuffer_iovec v[2];
+	int n = 0;
+	int sum_length = strlen(buf) + one.length;
+	n = evbuffer_reserve_space(buf, FRAME_BUFFER_SIZE, v, 2);
+	for(i = 0; i < n; ++i) {
+		// Fix me.
+		if(v[i].iov_len < sum_length)
+			err_sys("iov_len error");
+		memcpy(v[i].iov_base, buf, strlen(buf));
+		memcpy(v[i].iov_base + strlen(buf), one.data, one.length);
+		iov[i].iov_len = sum_length;
+	}
+}
+
+static void send_frame_header(struct bufferevent *bev)
+{
+	char *buf[SEND_BUFFER_SIZE] = {0};
+	count = 0;
+	
+	// mjpeg stream header.
+	sprintf(buffer, "HTTP/1.0 200 OK\r\n" \
+		"Content-Type: multipart/x-mixed-replace;boundary=" BOUNDARY "\r\n" \
+		"\r\n" \
+		"--" BOUNDARY "\r\n");
+
+	pthread_mutex_lock(&lock_buf);
+
+
+
+}
+
+static void send_frame()
+{
+}
 
 static void accept_error_cb(struct evconnlistener *listener, void *ctx)
 {
@@ -100,7 +136,7 @@ static void accept_error_cb(struct evconnlistener *listener, void *ctx)
 	event_base_loopexit(base, NULL);
 }
 
-void read_cb(struct bufferevent *bev, void *ctx)
+static void read_cb(struct bufferevent *bev, void *ctx)
 {
 	char *request_line;
 	size_t len;
@@ -111,8 +147,7 @@ void read_cb(struct bufferevent *bev, void *ctx)
 	if(request_line) {
 		DBG("line:%s\n", request_line);
 		if(strstr(request_line, "GET /stream") != NULL) {
-			bufev = bev;
-		//	writeready = 1;
+			writing = 1;
 		}
 			
 	}
@@ -123,7 +158,7 @@ void read_cb(struct bufferevent *bev, void *ctx)
 	pthreadid("read");
 	free(request_line);
 	DBG("read, fd:%d\n", fd);
-	char test[] = "hello world";
+//	char test[] = "hello world";
 //	DBG("size:%d\n", sizeof(test));
 	//evbuffer_add(output, test, sizeof(test));
 //	sleep(5);
@@ -131,13 +166,13 @@ void read_cb(struct bufferevent *bev, void *ctx)
 //	event_base_loopexit(bufferevent_get_base(bev), NULL);
 }
 
-void write_cb(struct bufferevent *bev, void *ctx)
+static void write_cb(struct bufferevent *bev, void *ctx)
 {
 	evutil_socket_t fd = bufferevent_getfd(bev);
-	if(writeready) {
+	if(writing) {
 		DBG("write ready, fd:%d\n", fd);
-		bufferevent_free(bev);
-		writeready = 0;
+		//bufferevent_free(bev);
+		writing = 0;
 	}
 	else
 		DBG("init\n");
@@ -145,7 +180,7 @@ void write_cb(struct bufferevent *bev, void *ctx)
 	pthreadid("write");
 }
 
-void event_cb(struct bufferevent *bev, short events, void *ctx)
+static void event_cb(struct bufferevent *bev, short events, void *ctx)
 {
 	if(events & BEV_EVENT_ERROR)
 		perror("error from buffer event");

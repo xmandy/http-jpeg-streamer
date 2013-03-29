@@ -87,9 +87,7 @@ typedef struct {
  * ****************************************************************/
 
 extern frame frame_buffer[FRAME_COUNT];
-extern struct bufferevent *bufev;
-extern int writeready;
-
+extern pthread_mutex_t lock_buf;
 
 /******************************************************************
  *
@@ -126,9 +124,6 @@ extern unsigned char* process_bmpfile(FILE *input_file, long *height, long *widt
 extern void init_global();
 extern void exit_global();
 extern void * accept_thread(void*);
-extern void read_cb(struct bufferevent *bev, void *ctx);
-extern void write_cb(struct bufferevent *bev, void *ctx);
-extern void event_cb(struct bufferevent *bev, short events, void *ctx);
 extern void pthreadid(const char *threadname);
 
 #endif
