@@ -88,8 +88,10 @@ typedef struct {
 
 extern frame frame_buffer[FRAME_COUNT];
 extern struct bufferevent *bufev;
-extern int writeready;
-
+extern int writing;
+extern int frame_header;
+extern pthread_mutex_t lock_write;
+extern pthread_mutex_t lock_buf;
 
 /******************************************************************
  *

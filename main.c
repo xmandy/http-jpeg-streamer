@@ -3,6 +3,8 @@
 frame frame_buffer[FRAME_COUNT];
 
 struct bufferevent *bufev;
+phtread_mutex_f lock_buf = PTHREAD_MUTEX_INITIALIZER;
+int frame_header = 1;
 
 int main(int argc, char **argv)
 {
@@ -42,47 +44,9 @@ int main(int argc, char **argv)
 
 	// in main thread, we compress images and send them if there is a client.
 
-	int flag = 1;
-	int size;
-	FILE *input;
-	char buffer[SEND_BUFFER_SIZE] = {0};
-	int readsize;
-	while(1) {
-		if(bufev && flag == 1) {
-			struct evbuffer *output = bufferevent_get_output(bufev);
-
-			if((input = fopen("shot-01.jpg", "rb")) == NULL) {
-				DBG("open file failed!\n");
-				return;
-			}   
-			    
-			fseek(input, 0, SEEK_END);
-			size = ftell(input);
-			fseek(input, 0, SEEK_SET);
-			sprintf(buffer, "HTTP/1.0 200 OK\r\n"\
-				"Content-Type: image/jpeg\r\n"\
-				"Content-Length: %d\r\n"\
-				STD_HEADER \
-				"\r\n", size);
-			unsigned char* test = (unsigned char *) malloc(size + strlen(buffer));
-			memcpy(test, buffer, strlen(buffer));
-			readsize = fread(test + strlen(buffer), 1, size, input);
-			if(readsize != size) {
-				DBG("read image error!\n");
-				return -1;
-			}
-//			evbuffer_add(output, buffer, strlen(buffer));
-			evbuffer_add(output, test, size + strlen(buffer));
-			writeready = 1;
-			flag = 0;
-			fclose(input);
-			DBG("write image");
-		}
-	}
-
 			
 	i = 1;
-	/*
+
 	while(1) {
 		// clean the formal jpeg data.
 		memset(frame_buffer[i-1].data, 0, FRAME_BUFFER_SIZE);
@@ -95,11 +59,6 @@ int main(int argc, char **argv)
 			err_sys("open file %s", name);
 		}
 
-		output_file = fopen("test.jpg", "wb");
-		if(!output_file) {
-			exit_global();
-			err_sys("open file %s", "test.jpg");
-		}
 		
 		imagedata = process_bmpfile(input_file, &height, &width);
 		if(!imagedata) {
@@ -140,7 +99,7 @@ int main(int argc, char **argv)
 		jpeg_destroy_compress(&cinfo);
 		return 1;
 	}
-*/	
+	
 	exit_global();
 
 }

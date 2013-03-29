@@ -1,6 +1,7 @@
 #include "server.h"
 
-int writeready = 0;
+int writing = 0;
+pthread_mutexattr_t lock_write = PTHREAD_MUTEX_INITIALIZER;
 
 void init_global() 
 {
@@ -111,8 +112,10 @@ void read_cb(struct bufferevent *bev, void *ctx)
 	if(request_line) {
 		DBG("line:%s\n", request_line);
 		if(strstr(request_line, "GET /stream") != NULL) {
+			pthread_mutex_lock(&lock_buf);
 			bufev = bev;
-		//	writeready = 1;
+			pthread_mutex_unlock(&lock_buf);
+		//	writing = 1;
 		}
 			
 	}
@@ -123,7 +126,7 @@ void read_cb(struct bufferevent *bev, void *ctx)
 	pthreadid("read");
 	free(request_line);
 	DBG("read, fd:%d\n", fd);
-	char test[] = "hello world";
+//	char test[] = "hello world";
 //	DBG("size:%d\n", sizeof(test));
 	//evbuffer_add(output, test, sizeof(test));
 //	sleep(5);
@@ -134,10 +137,12 @@ void read_cb(struct bufferevent *bev, void *ctx)
 void write_cb(struct bufferevent *bev, void *ctx)
 {
 	evutil_socket_t fd = bufferevent_getfd(bev);
-	if(writeready) {
+	if(writing) {
 		DBG("write ready, fd:%d\n", fd);
-		bufferevent_free(bev);
-		writeready = 0;
+		pthread_mutex_lock(&lock_write);
+		//bufferevent_free(bev);
+		writing = 0;
+		pthrea_mutex_unlock(&lock_write);
 	}
 	else
 		DBG("init\n");
