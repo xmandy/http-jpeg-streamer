@@ -147,7 +147,6 @@ static void read_cb(struct bufferevent *bev, void *ctx)
 	if(request_line) {
 		DBG("line:%s\n", request_line);
 		if(strstr(request_line, "GET /stream") != NULL) {
-			writing = 1;
 		}
 			
 	}
@@ -171,9 +170,6 @@ static void write_cb(struct bufferevent *bev, void *ctx)
 	evutil_socket_t fd = bufferevent_getfd(bev);
 	if(writing) {
 		DBG("write ready, fd:%d\n", fd);
-		//bufferevent_free(bev);
-		writing = 0;
-	}
 	else
 		DBG("init\n");
 	
