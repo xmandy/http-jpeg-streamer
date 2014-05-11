@@ -81,13 +81,11 @@ int main(int argc, char **argv)
 		cinfo.err = jpeg_std_error(&jerr);
 		jpeg_create_compress(&cinfo);
 
-	//	DBG("begin compress frame:%d\n", i);
+		DBG("begin compress frame:%d\n", i);
 		pthread_mutex_lock(&(frame_buffer[i].lock));
-	//	DBG("lock succeed\n");
 
 		memset(frame_buffer[i].data, 0, FRAME_BUFFER_SIZE);
 
-	//     see jdatadst.c
 		my_jpeg_stdio_dest(&cinfo, frame_buffer[i].data, &frame_buffer[i].length);
 
 		cinfo.image_width = width;
@@ -112,7 +110,7 @@ int main(int argc, char **argv)
 		gettimeofday(&(frame_buffer[i].time), NULL);
 
 		pthread_mutex_unlock(&(frame_buffer[i].lock));
-	//	DBG("complete compress frame:%d\n", i);
+		DBG("complete compress frame:%d\n", i);
 
 
 		fclose(input_file);

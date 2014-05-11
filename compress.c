@@ -138,7 +138,7 @@ unsigned char* process_bmpfile(FILE *input_file, long *height, long *width)
 		return NULL;
 	}
 
-	printf("image_size:%d\n", sizeof(image));
+	//printf("image_size:%d\n", sizeof(image));
 
 	if(fread(image, 1, sizeof(unsigned char)*row_width*biHeight, input_file) != sizeof(unsigned char)*row_width*biHeight) {
 			printf("read image data error!\n");

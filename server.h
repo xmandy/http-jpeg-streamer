@@ -4,7 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/types.h>
+#include <math.h>
 #include <errno.h>
 
 #include <event2/listener.h>
@@ -15,18 +17,22 @@
 #include <netdb.h> // NI_MAXHOST, addr info.
 #include <pthread.h>
 #include <signal.h>
+#include <sys/time.h>
 
 #include "jpeglib.h"
 
 #define DEBUG
 
+#define FRAME_PER_SECOND 25
+
 #define IO_BUFFER_SIZE 256
 #define PORT 8080
 #define MAXLINE 1024
-#define SEND_BUFFER_SIZE 1024
+#define SEND_BUFFER_SIZE 400 
 #define MAX_SD_LEN 8
 #define FRAME_BUFFER_SIZE 500000
 #define FRAME_COUNT 50
+#define FRAME_USECS 1000000/FRAME_PER_SECOND
 
 #define MIN(a, b) (((a) > (b)) ? (b) : (a))
 #define MAX(a, b) (((a) < (b)) ? (b) : (a))
@@ -78,6 +84,8 @@ typedef struct {
 typedef struct {
 	int length;
 	unsigned char *data;
+	pthread_mutex_t lock;
+	struct timeval time;
 } frame;
 
 /******************************************************************
@@ -124,6 +132,7 @@ extern unsigned char* process_bmpfile(FILE *input_file, long *height, long *widt
 extern void init_global();
 extern void exit_global();
 extern void * accept_thread(void*);
+extern int get_elapse(struct timeval start, struct timeval end);
 extern void pthreadid(const char *threadname);
 
 #endif
